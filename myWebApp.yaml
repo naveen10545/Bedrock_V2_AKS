@@ -1,23 +1,30 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dev
+---
 # mywebapp services
 ##################################################################################################
 apiVersion: v1
 kind: Service
 metadata:
-  name: mywebapp
+  name: mywebapp1-workorder
+  namespace: dev
   labels:
-    app: mywebapp
+    app: mywebapp1-workorder
 spec:
-  type: LoadBalancer
+  type: ClusterIP
   ports:
     - port: 8080
       name: http
   selector:
-    app: mywebapp
+    app: mywebapp1-workorder
 ---
 apiVersion: extensions/v1beta1 #TODO: Migrate to apps/v1
 kind: Deployment
 metadata:
-  name: mywebapp-v1
+  name: mywebapp1-workorder-v1
+  namespace: dev
 spec:
   replicas: 3
   minReadySeconds: 10 # Wait 2 seconds after each new pod comes up before marked as "ready"
@@ -29,13 +36,210 @@ spec:
   template:
     metadata:
       labels:
-        app: mywebapp
+        app: mywebapp1-workorder
         version: v1
     spec:
       containers:
-        - name: mywebapp
-          image: andrebriggs/goserver:v1.2
+        - name: mywebapp1-workorder
+          image: acrcopopreprod.azurecr.io/copo-workorder-service-dev:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+
+---
+
+  # mywebapp services
+##################################################################################################
+apiVersion: v1
+kind: Service
+metadata:
+  name: mywebapp1-common
+  namespace: dev
+  labels:
+    app: mywebapp1-common
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      name: http
+  selector:
+    app: mywebapp1-common
+---
+apiVersion: extensions/v1beta1 #TODO: Migrate to apps/v1
+kind: Deployment
+metadata:
+  name: mywebapp1-common-v1
+  namespace: dev
+spec:
+  replicas: 3
+  minReadySeconds: 10 # Wait 2 seconds after each new pod comes up before marked as "ready"
+  strategy:
+    type: RollingUpdate # describe how we do rolling updates
+    rollingUpdate:
+      maxUnavailable: 1 # When updating take one pod down at a time
+      maxSurge: 1 # When updating never have more than one extra pod. If replicas = 2 then never 3 pods when updating
+  template:
+    metadata:
+      labels:
+        app: mywebapp1-common
+        version: v1
+    spec:
+      containers:
+        - name: mywebapp1-common
+          image: acrcopopreprod.azurecr.io/copo-common-service-dev:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
 ---
+
+# mywebapp services
+##################################################################################################
+apiVersion: v1
+kind: Service
+metadata:
+  name: mywebapp1-org
+  namespace: dev
+  labels:
+    app: mywebapp1-org
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      name: http
+  selector:
+    app: mywebapp1-org
+---
+apiVersion: extensions/v1beta1 #TODO: Migrate to apps/v1
+kind: Deployment
+metadata:
+  name: mywebapp1-org-v1
+  namespace: dev
+spec:
+  replicas: 3
+  minReadySeconds: 10 # Wait 2 seconds after each new pod comes up before marked as "ready"
+  strategy:
+    type: RollingUpdate # describe how we do rolling updates
+    rollingUpdate:
+      maxUnavailable: 1 # When updating take one pod down at a time
+      maxSurge: 1 # When updating never have more than one extra pod. If replicas = 2 then never 3 pods when updating
+  template:
+    metadata:
+      labels:
+        app: mywebapp1-org
+        version: v1
+    spec:
+      containers:
+        - name: mywebapp1-org
+          image: acrcopopreprod.azurecr.io/copo-organization-service-dev:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+        
+---
+
+  # mywebapp services
+##################################################################################################
+apiVersion: v1
+kind: Service
+metadata:
+  name: mywebapp1-ui
+  namespace: dev
+  labels:
+    app: mywebapp1-ui
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      name: http
+  selector:
+    app: mywebapp1-ui
+---
+apiVersion: extensions/v1beta1 #TODO: Migrate to apps/v1
+kind: Deployment
+metadata:
+  name: mywebapp1-ui-v1
+  namespace: dev
+spec:
+  replicas: 3
+  minReadySeconds: 10 # Wait 2 seconds after each new pod comes up before marked as "ready"
+  strategy:
+    type: RollingUpdate # describe how we do rolling updates
+    rollingUpdate:
+      maxUnavailable: 1 # When updating take one pod down at a time
+      maxSurge: 1 # When updating never have more than one extra pod. If replicas = 2 then never 3 pods when updating
+  template:
+    metadata:
+      labels:
+        app: mywebapp1-ui
+        version: v1
+    spec:
+      containers:
+        - name: mywebapp1-ui
+          image: acrcopopreprod.azurecr.io/copo-ui-dev:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+
+---
+controller:
+  service:
+    loadBalancerIP: 10.240.0.145
+    annotations:
+      service.beta.kubernetes.io/azure-load-balancer-internal: "true"
+
+---
+
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: copo-network-policy
+spec:
+  podSelector:
+    matchLabels:
+      tier: frontend
+  policyTypes:
+    - Egress
+  egress:
+  - to:
+    - ipBlock:
+        cidr: 10.0.0.0/16
+    ports:
+      - protocol: TCP
+        port: 80
+
+---
+
+
+
+
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: copo-dev-ingress
+  namespace: dev
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/rewrite-target: /$1
+    nginx.org/client-max-body-size: "8m"
+    nginx.org/server-tokens: "false"
+spec:
+  rules:
+  - http:
+      paths:
+      - backend:
+          serviceName: mywebapp1-workorder
+          servicePort: 80
+        path: /work-order-backend/(.*)
+      - backend:
+          serviceName: mywebapp1-org
+          servicePort: 80
+        path: /organization-backend/(.*)
+      - backend:
+          serviceName: mywebapp1-common
+          servicePort: 80
+        path: /common-backend/(.*)
+      - backend:
+          serviceName: mywebapp1-ui
+          servicePort: 80
+        path: /(.*)
