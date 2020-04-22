@@ -83,3 +83,4 @@ spec:
   selector:
     app: azure-vote-front
 
+
